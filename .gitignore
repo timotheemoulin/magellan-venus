@@ -1,0 +1,12 @@
+node_modules/
+.idea/
+dist/
+data/
+public/tiles/
+public/global_*.png
+public/meta.json
+.vite/
+site/
+site-test/
+magellan-site.zip
+*.log
