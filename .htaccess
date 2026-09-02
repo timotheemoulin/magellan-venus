@@ -1,7 +1,27 @@
-# Vénus en relief — hébergement mutualisé Apache (Infomaniak)
+# Vénus en relief — Apache (hébergement mutualisé)
+#
+# Le dépôt git est cloné directement dans le dossier web : le bundle Vite se trouve
+# dans dist/, les tuiles, cartes globales, meta.json et names.json (non versionnés,
+# générés par tools/build_tiles.py et build_names.py) à la racine à côté de ce fichier.
 
 Options -Indexes
 AddDefaultCharset UTF-8
+
+# La racine sert dist/index.html et dist/assets/ ; le index.html source de Vite
+# (racine du dépôt) n'est jamais servi.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^$ dist/index.html [L]
+  RewriteRule ^index\.html$ dist/index.html [L]
+  RewriteRule ^assets/(.+)$ dist/assets/$1 [L]
+</IfModule>
+
+# Rien du dépôt lui-même ne doit être accessible.
+RedirectMatch 404 /\.git
+RedirectMatch 404 ^/.*/(src|tools|deploy|node_modules)(/|$)
+<FilesMatch "^(package(-lock)?\.json|vite\.config\.js|README\.md|\.gitignore|\.gitattributes)$">
+  Require all denied
+</FilesMatch>
 
 <IfModule mod_mime.c>
   AddType application/javascript .js .mjs

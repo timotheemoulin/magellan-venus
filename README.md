@@ -59,21 +59,32 @@ npm run dev
 
 ## Déploiement
 
-L'application est 100 % statique : aucun PHP, aucune base de données. N'importe quel hébergement
-web convient. `pwsh tools/package.ps1` construit le site et assemble dans `magellan-site.zip`
-le contenu de `dist/` (build Vite), de `public/` (tuiles, cartes globales, `meta.json`,
-`names.json`) et le `deploy/.htaccess` (cache long sur les tuiles, 404 minimal pour Apache) ;
-il suffit de décompresser l'archive dans le dossier web du site. Les chemins sont relatifs, le
-site fonctionne aussi dans un sous-dossier. Les images radar et la nomenclature sont chargées
-depuis l'USGS, sans proxy.
+L'application est 100 % statique : aucun PHP, aucune base de données, et `dist/` (bundle Vite)
+est versionné — chaque commit qui touche `src/` ou `index.html` embarque le bundle correspondant
+(`npm run build` avant de commiter). Le déploiement le plus simple sur un hébergement Apache
+est donc de **cloner le dépôt dans le dossier web** et d'y ajouter les données de `public/` :
 
+```
+dossier-web/
+├── .git/            (bloqué par .htaccess)
+├── .htaccess        sert dist/index.html et dist/assets/ à la racine, cache long sur les tuiles
+├── dist/            bundle versionné
+├── index.html       source Vite, jamais servi
+├── src/, tools/…    bloqués par .htaccess
+├── tiles/           ┐
+├── global_*.png     │ générés par build_tiles.py / build_names.py,
+├── meta.json        │ copiés à la main (non versionnés)
+└── names.json       ┘
+```
+
+Mise à jour de l'application : `git pull` dans le dossier web, sans Node ni npm. Les chemins
+sont relatifs, le site fonctionne dans un sous-dossier. Les images radar et la nomenclature
+sont chargées depuis l'USGS, sans proxy.
+
+Sans git sur le serveur, `pwsh tools/package.ps1` produit `magellan-site.zip` avec la même
+disposition (`-AppOnly` : seulement `dist/` + `.htaccess`) à décompresser dans le dossier web.
 Pour un envoi allégé (~540 Mo, 14 000 fichiers au lieu de ~1,6 Go et 56 000), générer les tuiles
 avec `--zooms 0-7` : on perd seulement le niveau natif à 290 m/px.
-
-`dist/` est versionné : chaque commit qui touche `src/` ou `index.html` embarque le bundle
-correspondant (`npm run build` avant de commiter). Mettre l'application à jour sur le serveur
-revient donc à y copier `dist/index.html` et `dist/assets/` depuis GitHub, sans Node ni npm
-(`pwsh tools/package.ps1 -AppOnly` produit l'archive équivalente).
 
 ## Pourquoi seulement 35 % de la planète ?
 
