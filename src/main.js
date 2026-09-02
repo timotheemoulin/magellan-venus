@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
-  R_UNITS, UNIT_M, RAMP_MIN, RAMP_MAX,
+  R_UNITS, R_VENUS_M, UNIT_M, RAMP_MIN, RAMP_MAX,
   loadMeta, loadGlobalField, loadRegionField,
   makeTerrainMaterial, makeRampTexture, rampColorAt, texelSizeM,
-  loadSarTexture, setSarTexture,
+  loadSarTexture, setSarTexture, makeSpherePatchGeometry,
 } from './terrain.js';
 import { loadNames, makeLabelRenderer, GlobeLabels, RegionLabels, lonLatToDir, TYPE_FR } from './labels.js';
 
@@ -54,6 +54,7 @@ const state = {
   globeLabels: null,
   regionLabels: null,
   showNames: true,
+  lod: { patch: null, loading: false, lastCheck: 0 }, // patch haute résolution du globe
   exag: 25,
   colorMode: 0,
   sunAz: 315,
@@ -74,6 +75,7 @@ const ui = {
   roLat: $('ro-lat'),
   roLon: $('ro-lon'),
   roAlt: $('ro-alt'),
+  lodInfo: $('lod-info'),
 };
 
 function setStatus(text, isError = false) {
@@ -83,7 +85,7 @@ function setStatus(text, isError = false) {
 }
 
 function materials() {
-  return [state.globe?.material, state.region?.material].filter(Boolean);
+  return [state.globe?.material, state.region?.material, state.lod.patch?.material].filter(Boolean);
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +138,126 @@ async function buildGlobe(meta) {
   loadSarTexture({ lonWest: -180, latSouth: -90, lonEast: 180, latNorth: 90, width: 4096, height: 2048 })
     .then((tex) => { tex.wrapS = THREE.RepeatWrapping; setSarTexture(material, tex); })
     .catch((err) => console.warn('mosaïque radar globale indisponible', err));
+}
+
+// ---------------------------------------------------------------------------
+// Niveau de détail du globe : un morceau de sphère haute résolution centré sur la
+// zone regardée, rechargé quand on se déplace ou que l'altitude change.
+// ---------------------------------------------------------------------------
+const M_PER_DEG = R_VENUS_M * DEG;
+const TAN_HALF_FOV = Math.tan((camera.fov / 2) * DEG);
+const M_PER_PX_Z0 = (180 * M_PER_DEG) / 256; // taille d'un texel au zoom 0
+const LOD_MIN_ZOOM = 5;
+const LOD_MAX_TILES = 8;
+const screenCenter = new THREE.Vector2(0, 0);
+
+/** Zoom, nombre de tuiles et centre souhaités pour la vue courante (null : carte globale suffisante). */
+function lodTarget() {
+  const alt = camera.position.length() - R_UNITS;
+  const viewM = 2 * alt * TAN_HALF_FOV * UNIT_M;        // hauteur du champ de vue au sol (m)
+  const groundPxM = viewM / window.innerHeight;
+  let zoom = Math.ceil(Math.log2(M_PER_PX_Z0 / groundPxM)); // texel ≈ pixel écran
+  if (zoom < LOD_MIN_ZOOM) return null;
+  zoom = Math.min(zoom, state.meta.maxZoom);
+
+  const viewDeg = (viewM / M_PER_DEG) * Math.max(1, camera.aspect) * 1.4;
+  let n = Math.ceil(viewDeg / (180 / (1 << zoom)));
+  while (n > LOD_MAX_TILES && zoom > LOD_MIN_ZOOM) {
+    zoom--;
+    n = Math.ceil(viewDeg / (180 / (1 << zoom)));
+  }
+  n = Math.max(2, Math.min(LOD_MAX_TILES, n));
+
+  // Centre : point du globe au centre de l'écran, sinon point sous la caméra.
+  raycaster.setFromCamera(screenCenter, camera);
+  const hit = raycaster.intersectObject(state.globe.mesh, false)[0];
+  let lon, lat;
+  if (hit?.uv) {
+    ({ lon, lat } = state.globe.field.uvToLonLat(hit.uv.x, hit.uv.y));
+  } else {
+    const d = camera.position.clone().normalize();
+    lat = Math.asin(d.y) / DEG;
+    lon = Math.atan2(d.z, -d.x) / DEG - 180;
+    if (lon < -180) lon += 360;
+  }
+  return { zoom, n, lon, lat };
+}
+
+/** Le point (lon, lat) est-il dans le patch, à `margin` (fraction) des bords ? */
+function patchContains(patch, lon, lat, margin) {
+  const f = patch.field;
+  const w = f.lonEast - f.lonWest;
+  const h = f.latNorth - f.latSouth;
+  if (lon < f.lonWest) lon += 360;
+  return lon > f.lonWest + w * margin && lon < f.lonEast - w * margin
+    && lat > f.latSouth + h * margin && lat < f.latNorth - h * margin;
+}
+
+function removePatch() {
+  const p = state.lod.patch;
+  if (!p) return;
+  scene.remove(p.mesh);
+  p.mesh.geometry.dispose();
+  setSarTexture(p.material, null);
+  p.material.dispose();
+  p.field.dispose();
+  state.lod.patch = null;
+  state.globe.material.uniforms.uHoleOn.value = 0;
+  ui.lodInfo.textContent = '';
+}
+
+async function updateLod(now) {
+  const lod = state.lod;
+  if (state.mode !== 'globe' || !state.globe || lod.loading || now - lod.lastCheck < 300) return;
+  lod.lastCheck = now;
+  const t = lodTarget();
+  if (!t) {
+    if (lod.patch) removePatch();
+    return;
+  }
+  const cur = lod.patch;
+  if (cur && cur.zoom === t.zoom && t.n <= cur.n && patchContains(cur, t.lon, t.lat, 0.2)) return;
+
+  lod.loading = true;
+  ui.lodInfo.textContent = `Détail : chargement zoom ${t.zoom}…`;
+  try {
+    const field = await loadRegionField({ zoom: t.zoom, lon: t.lon, lat: t.lat, nTiles: t.n });
+    const material = makeTerrainMaterial({
+      heightTexture: field.getTexture(renderer),
+      texSize: [field.width, field.height],
+      pxM: texelSizeM(field, 0),
+      mode: 1,
+      hmin: state.meta.elevMin,
+      hmax: state.meta.elevMax,
+      rampTexture,
+    });
+    const mesh = new THREE.Mesh(makeSpherePatchGeometry(field, Math.min(768, field.width / 2)), material);
+    removePatch();
+    scene.add(mesh);
+    const patch = { mesh, field, material, zoom: t.zoom, n: t.n };
+    lod.patch = patch;
+    applyUniforms();
+
+    const g = state.globe.material.uniforms;
+    g.uHole.value.set(field.lonWest, field.latSouth, field.lonEast, field.latNorth);
+    g.uHoleOn.value = 1;
+
+    const mPerPx = texelSizeM(field, 0)[1];
+    ui.lodInfo.textContent = `Détail : zoom ${t.zoom} · ${t.n}×${t.n} tuiles · ${mPerPx.toFixed(0)} m/px`;
+
+    if (field.lonEast <= 180) {
+      loadSarTexture({
+        lonWest: field.lonWest, latSouth: field.latSouth, lonEast: field.lonEast, latNorth: field.latNorth,
+        width: field.width, height: field.height,
+      })
+        .then((tex) => { if (lod.patch === patch) setSarTexture(material, tex); else tex.dispose(); })
+        .catch(() => {});
+    }
+  } catch (err) {
+    console.warn('patch LOD indisponible', err);
+  } finally {
+    lod.loading = false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -234,14 +356,15 @@ function setMode(mode, opts = {}) {
   ui.btnGlobe.classList.toggle('active', mode === 'globe');
   ui.btnRegion.classList.toggle('active', mode === 'region');
   if (state.globe) state.globe.mesh.visible = mode === 'globe';
+  if (state.lod.patch) state.lod.patch.mesh.visible = mode === 'globe';
   if (state.region) state.region.mesh.visible = mode === 'region';
   ui.btnClose.hidden = mode !== 'region';
 
   const saved = opts.newRegion ? null : state.savedCam[mode];
   if (mode === 'globe') {
-    controls.minDistance = R_UNITS + 0.3;
+    controls.minDistance = R_UNITS + 0.08;
     controls.maxDistance = 60;
-    ui.hint.textContent = 'Cliquez sur le globe pour charger une région en haute résolution.';
+    ui.hint.textContent = 'Zoomez (molette) : le relief se précise automatiquement. Cliquez pour ouvrir une région à plat.';
     if (saved) {
       camera.position.copy(saved.position);
       controls.target.copy(saved.target);
@@ -413,11 +536,16 @@ function updateReadout() {
 }
 
 function pick() {
-  const current = state.mode === 'globe' ? state.globe : state.region;
-  if (!current) return;
+  // Sur le globe, le patch haute résolution a priorité sur la carte globale.
+  const candidates = state.mode === 'globe'
+    ? [state.lod.patch, state.globe]
+    : [state.region];
+  const targets = candidates.filter(Boolean);
+  if (!targets.length) return;
   raycaster.setFromCamera(pointer, camera);
-  const hit = raycaster.intersectObject(current.mesh, false)[0];
-  if (!hit?.uv) {
+  const hit = raycaster.intersectObjects(targets.map((t) => t.mesh), false)[0];
+  const current = hit && targets.find((t) => t.mesh === hit.object);
+  if (!hit?.uv || !current) {
     if (state.hovered) { state.hovered = null; updateReadout(); }
     return;
   }
@@ -431,10 +559,17 @@ function pick() {
 // Boucle
 // ---------------------------------------------------------------------------
 let frame = 0;
-function animate() {
+function animate(now = 0) {
   requestAnimationFrame(animate);
+  if (state.mode === 'globe') {
+    // Rotation plus lente quand on est près de la surface.
+    controls.rotateSpeed = Math.max(0.03, Math.min(1, (camera.position.length() - R_UNITS) / 8));
+  } else {
+    controls.rotateSpeed = 1;
+  }
   controls.update();
   updateSun();
+  updateLod(now);
   if (frame++ % 3 === 0) {
     pick();
     state.globeLabels?.update(camera, state.showNames && state.mode === 'globe');

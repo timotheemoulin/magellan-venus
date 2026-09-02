@@ -223,6 +223,7 @@ uniform int uMode; // 0 = plan, 1 = globe
 
 varying vec2 vUv;
 varying float vH;
+varying float vLat;
 varying vec3 vEast;
 varying vec3 vNorth;
 varying vec3 vUp;
@@ -237,10 +238,12 @@ void main() {
   vec3 up = normalize(normal);
   vec3 east;
   if (uMode == 1) {
-    float lon = uv.x * 6.28318530718;
-    east = vec3(sin(lon), 0.0, cos(lon));
+    // Valable pour la sphère complète comme pour un morceau de sphère (patch LOD).
+    east = normalize(vec3(position.z, 0.0, -position.x));
+    vLat = asin(clamp(up.y, -1.0, 1.0));
   } else {
     east = vec3(1.0, 0.0, 0.0);
+    vLat = 0.0;
   }
   vec3 north = cross(up, east);
   vEast = normalize(normalMatrix * east);
@@ -264,14 +267,23 @@ uniform float uRampMin;
 uniform float uRampMax;
 uniform sampler2D uSar;   // mosaïque radar Magellan (USGS), même emprise que uHeight
 uniform int uHasSar;
+uniform vec4 uHole;       // emprise (lonW, latS, lonE, latN) masquée sur le globe de base
+uniform int uHoleOn;      // 1 quand un patch haute résolution recouvre uHole
 
 varying vec2 vUv;
 varying float vH;
+varying float vLat;
 varying vec3 vEast;
 varying vec3 vNorth;
 varying vec3 vUp;
 
 void main() {
+  if (uHoleOn == 1) {
+    float lon = vUv.x * 360.0 - 180.0;
+    float lat = vUv.y * 180.0 - 90.0;
+    if (lon < uHole.x) lon += 360.0; // patch à cheval sur l'antiméridien
+    if (lon < uHole.z && lat > uHole.y && lat < uHole.w) discard;
+  }
   vec2 du = vec2(1.0 / uTexSize.x, 0.0);
   vec2 dv = vec2(0.0, 1.0 / uTexSize.y);
   float hl = texture2D(uHeight, vUv - du).r;
@@ -295,10 +307,7 @@ void main() {
   if (hu < -20000.0) hu = hc;
 
   float pxX = uPxM.x;
-  if (uMode == 1) {
-    float lat = (vUv.y - 0.5) * 3.14159265359;
-    pxX *= max(cos(lat), 0.02);
-  }
+  if (uMode == 1) pxX *= max(cos(vLat), 0.02);
   float dhdx = (hr - hl) / (2.0 * pxX);
   float dhdy = (hu - hd) / (2.0 * uPxM.y);
   vec3 nt = normalize(vec3(-dhdx * uExag, -dhdy * uExag, 1.0));
@@ -352,8 +361,22 @@ export function makeTerrainMaterial({ heightTexture, texSize, pxM, mode, hmin, h
       uRampMax: { value: RAMP_MAX },
       uSar: { value: null },
       uHasSar: { value: 0 },
+      uHole: { value: new THREE.Vector4() },
+      uHoleOn: { value: 0 },
     },
   });
+}
+
+/**
+ * Morceau de sphère couvrant l'emprise d'un champ de hauteurs (patch LOD du globe).
+ * Les uv de SphereGeometry vont de 0 à 1 sur le morceau, comme la texture du champ.
+ */
+export function makeSpherePatchGeometry(field, segments) {
+  const phiStart = (field.lonWest + 180) * DEG;
+  const phiLength = (field.lonEast - field.lonWest) * DEG;
+  const thetaStart = (90 - field.latNorth) * DEG;
+  const thetaLength = (field.latNorth - field.latSouth) * DEG;
+  return new THREE.SphereGeometry(R_UNITS, segments, segments, phiStart, phiLength, thetaStart, thetaLength);
 }
 
 /** Attache (ou retire) une texture radar au matériau. */

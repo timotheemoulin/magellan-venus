@@ -16,7 +16,9 @@ Un script Python le convertit une seule fois en une pyramide de tuiles PNG d'alt
 (encodage « Terrarium », 256 px) et en cartes globales, que l'application charge à la demande :
 
 - **Globe** : sphère de 6051 km déformée par la carte globale (shader de déplacement),
-  ombrage et couleurs hypsométriques calculés en GPU.
+  ombrage et couleurs hypsométriques calculés en GPU. En zoomant, un morceau de sphère haute
+  résolution (jusqu'à 8 × 8 tuiles, zoom choisi pour qu'un texel ≈ un pixel écran) se charge
+  automatiquement sous la zone regardée et remplace la carte globale à cet endroit.
 - **Région** : clic sur le globe → chargement d'un carré de tuiles au zoom choisi,
   rendu en terrain plan haute résolution (jusqu'à ~300 m/px). Échap ou × pour revenir au globe
   (la vue précédente est conservée) ; changer le zoom ou la taille recharge la région au même endroit.
