@@ -9,4 +9,5 @@ public/meta.json
 site/
 site-test/
 magellan-site.zip
+deploy/INFOMANIAK.md
 *.log

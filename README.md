@@ -55,39 +55,18 @@ python tools/build_names.py
 npm run dev
 ```
 
-## Déploiement sur un hébergement mutualisé (Infomaniak)
+## Déploiement
 
-L'application est 100 % statique : aucun PHP, aucune base de données. Il suffit de déposer dans
-le dossier web du site le contenu de `dist/` (build Vite), de `public/` (tuiles, cartes globales,
-`meta.json`, `names.json`) et le `deploy/.htaccess` (cache long sur les tuiles, 404 minimal).
-Les images radar et la nomenclature sont chargées depuis l'USGS, sans proxy.
+L'application est 100 % statique : aucun PHP, aucune base de données. N'importe quel hébergement
+web convient. `pwsh tools/package.ps1` construit le site et assemble dans `magellan-site.zip`
+le contenu de `dist/` (build Vite), de `public/` (tuiles, cartes globales, `meta.json`,
+`names.json`) et le `deploy/.htaccess` (cache long sur les tuiles, 404 minimal pour Apache) ;
+il suffit de décompresser l'archive dans le dossier web du site. Les chemins sont relatifs, le
+site fonctionne aussi dans un sous-dossier. Les images radar et la nomenclature sont chargées
+depuis l'USGS, sans proxy.
 
-1. Empaqueter (build + archive unique, ~1,6 Go, ~56 000 fichiers) :
-
-```bash
-pwsh tools/package.ps1
-```
-
-2. Activer SSH dans le Manager Infomaniak (Hébergement → SSH/FTP → utilisateur avec accès SSH),
-   puis envoyer l'archive et la décompresser sur place (bien plus rapide que 56 000 transferts FTP) :
-
-```bash
-scp magellan-site.zip UTILISATEUR@HOTE.ftp.infomaniak.com:~/sites/MON-DOMAINE/
-```
-
-```bash
-ssh UTILISATEUR@HOTE.ftp.infomaniak.com "cd ~/sites/MON-DOMAINE && unzip -oq magellan-site.zip && rm magellan-site.zip"
-```
-
-   `HOTE` et `UTILISATEUR` sont ceux de l'accès FTP/SSH ; le dossier web est
-   `~/sites/<domaine>/` (ou `~/web/` pour l'ancien schéma). Le site fonctionne aussi dans un
-   sous-dossier (chemins relatifs).
-
-3. Mises à jour de l'application seule : `npm run build` puis renvoyer `dist/index.html` et
-   `dist/assets/` (les tuiles ne changent pas).
-
-Sans SSH, WinSCP/FileZilla fonctionnent mais l'envoi des 56 000 tuiles prend plusieurs heures ;
-on peut alors limiter le zoom 8 (`--zooms 0-7` → ~540 Mo, 14 000 fichiers).
+Pour un envoi allégé (~540 Mo, 14 000 fichiers au lieu de ~1,6 Go et 56 000), générer les tuiles
+avec `--zooms 0-7` : on perd seulement le niveau natif à 290 m/px.
 
 ## Pourquoi seulement 35 % de la planète ?
 
