@@ -9,5 +9,6 @@ public/meta.json
 site/
 site-test/
 magellan-site.zip
+magellan-app.zip
 deploy/INFOMANIAK.md
 *.log
