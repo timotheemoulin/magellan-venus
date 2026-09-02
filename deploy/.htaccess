@@ -1,0 +1,39 @@
+# Vénus en relief — hébergement mutualisé Apache (Infomaniak)
+
+Options -Indexes
+AddDefaultCharset UTF-8
+
+<IfModule mod_mime.c>
+  AddType application/javascript .js .mjs
+  AddType application/json .json
+</IfModule>
+
+# Les tuiles et les cartes globales ne changent jamais : cache long.
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresDefault "access plus 1 hour"
+  <FilesMatch "\.(png|jpg|webp)$">
+    ExpiresDefault "access plus 1 year"
+  </FilesMatch>
+  <FilesMatch "\.(js|css)$">
+    ExpiresDefault "access plus 1 year"
+  </FilesMatch>
+  <FilesMatch "^(index\.html|meta\.json|names\.json)$">
+    ExpiresDefault "access plus 10 minutes"
+  </FilesMatch>
+</IfModule>
+
+<IfModule mod_headers.c>
+  <FilesMatch "\.(png|jpg|webp|js|css)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+</IfModule>
+
+# Texte compressé (le PNG/JPEG l'est déjà).
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json
+</IfModule>
+
+# Une tuile absente = « pas de donnée » pour l'application : réponse 404 minimale
+# plutôt que la page d'erreur HTML complète.
+ErrorDocument 404 "404"
