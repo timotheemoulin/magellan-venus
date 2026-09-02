@@ -10,6 +10,7 @@ import { loadNames, makeLabelRenderer, GlobeLabels, RegionLabels, lonLatToDir, T
 
 const $ = (id) => document.getElementById(id);
 const DEG = Math.PI / 180;
+const MOBILE = window.matchMedia('(max-width: 800px), (pointer: coarse) and (max-width: 1100px)').matches;
 
 // ---------------------------------------------------------------------------
 // Scène
@@ -25,8 +26,12 @@ scene.background = new THREE.Color(0x07080c);
 
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 200);
 
+/** Distance « vue d'ensemble » : plus loin en portrait pour que le globe tienne en largeur. */
+function homeDistance() {
+  return 18 * Math.max(1, 0.85 / camera.aspect);
+}
 /** Position de caméra face à une longitude donnée (convention uv de SphereGeometry). */
-function cameraPosForLon(lonDeg, dist = 18, height = 4) {
+function cameraPosForLon(lonDeg, dist = homeDistance(), height = 4) {
   const a = ((lonDeg + 180) / 360) * Math.PI * 2;
   return new THREE.Vector3(-Math.cos(a) * dist, height, Math.sin(a) * dist);
 }
@@ -78,6 +83,14 @@ const ui = {
   lodInfo: $('lod-info'),
 };
 
+/** Tiroir des réglages sur mobile (le panneau est toujours visible sur grand écran). */
+function setPanelOpen(open) {
+  document.body.classList.toggle('panel-open', open);
+  const btn = $('btn-panel');
+  btn.textContent = open ? '✕' : '☰';
+  btn.setAttribute('aria-expanded', String(open));
+}
+
 function setStatus(text, isError = false) {
   ui.status.hidden = !text;
   ui.status.textContent = text ?? '';
@@ -125,7 +138,7 @@ async function buildGlobe(meta) {
     hmax: meta.elevMax,
     rampTexture,
   });
-  const segments = Math.min(1024, field.width / 2);
+  const segments = Math.min(MOBILE ? 512 : 1024, field.width / 2);
   const geometry = new THREE.SphereGeometry(R_UNITS, segments, segments / 2);
   const mesh = new THREE.Mesh(geometry, material);
   scene.add(mesh);
@@ -148,7 +161,7 @@ const M_PER_DEG = R_VENUS_M * DEG;
 const TAN_HALF_FOV = Math.tan((camera.fov / 2) * DEG);
 const M_PER_PX_Z0 = (180 * M_PER_DEG) / 256; // taille d'un texel au zoom 0
 const LOD_MIN_ZOOM = 5;
-const LOD_MAX_TILES = 8;
+const LOD_MAX_TILES = MOBILE ? 6 : 8;
 const screenCenter = new THREE.Vector2(0, 0);
 
 /** Zoom, nombre de tuiles et centre souhaités pour la vue courante (null : carte globale suffisante). */
@@ -231,7 +244,7 @@ async function updateLod(now) {
       hmax: state.meta.elevMax,
       rampTexture,
     });
-    const mesh = new THREE.Mesh(makeSpherePatchGeometry(field, Math.min(768, field.width / 2)), material);
+    const mesh = new THREE.Mesh(makeSpherePatchGeometry(field, Math.min(MOBILE ? 384 : 768, field.width / 2)), material);
     removePatch();
     scene.add(mesh);
     const patch = { mesh, field, material, zoom: t.zoom, n: t.n };
@@ -294,7 +307,7 @@ async function loadRegionAt(lon, lat) {
     const pxM = texelSizeM(field, field.latCenter);
     const widthU = (field.width * pxM[0]) / UNIT_M;
     const heightU = (field.height * pxM[1]) / UNIT_M;
-    const seg = Math.min(768, field.width);
+    const seg = Math.min(MOBILE ? 384 : 768, field.width);
     const geometry = new THREE.PlaneGeometry(widthU, heightU, seg, seg);
     const material = makeTerrainMaterial({
       heightTexture: field.getTexture(renderer),
@@ -464,6 +477,7 @@ function bindUI() {
   const closeRegion = () => { if (state.mode === 'region') setMode('globe'); };
   ui.btnGlobe.addEventListener('click', () => setMode('globe'));
   ui.btnClose.addEventListener('click', closeRegion);
+  $('btn-panel').addEventListener('click', () => setPanelOpen(!document.body.classList.contains('panel-open')));
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeRegion();
   });
@@ -491,7 +505,7 @@ function bindUI() {
 
   // Survol et clic
   let downPos = null;
-  canvas.addEventListener('pointerdown', (e) => { downPos = [e.clientX, e.clientY]; });
+  canvas.addEventListener('pointerdown', (e) => { downPos = [e.clientX, e.clientY]; setPanelOpen(false); });
   canvas.addEventListener('pointerup', (e) => {
     if (!downPos) return;
     const moved = Math.hypot(e.clientX - downPos[0], e.clientY - downPos[1]);
@@ -516,7 +530,7 @@ function bindUI() {
 /** Oriente le globe vers une entité nommée (distance adaptée à sa taille). */
 function flyTo(f) {
   if (state.mode !== 'globe') setMode('globe');
-  const dist = Math.max(R_UNITS + 0.4, Math.min(18, R_UNITS + (f.km || 500) / 400));
+  const dist = Math.max(R_UNITS + 0.4, Math.min(homeDistance(), R_UNITS + (f.km || 500) / 400));
   camera.position.copy(lonLatToDir(f.lon, f.lat)).multiplyScalar(dist);
   controls.target.set(0, 0, 0);
   controls.update();
