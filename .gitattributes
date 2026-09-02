@@ -1,0 +1,5 @@
+# dist/ est le bundle Vite versionné pour le déploiement sans npm :
+# diffs repliés sur GitHub et ignorés par git diff.
+dist/** linguist-generated=true -diff
+package-lock.json linguist-generated=true -diff
+public/names.json linguist-generated=true -diff

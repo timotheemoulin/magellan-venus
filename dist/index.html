@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vénus en relief — Magellan / VOLT</title>
+  <script type="module" crossorigin src="./assets/index-DUR4p45d.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-BVugAn9v.css">
+</head>
+<body>
+  <canvas id="view"></canvas>
+
+  <header id="top">
+    <h1>Vénus en relief</h1>
+    <p>Topographie VOLT 300 m, dérivée des radars de la sonde Magellan (1990-1994)</p>
+  </header>
+
+  <aside id="panel">
+    <section>
+      <div class="row modes">
+        <button id="btn-globe" class="active" type="button">Globe</button>
+        <button id="btn-region" type="button" disabled>Région</button>
+      </div>
+      <p class="hint" id="hint">Cliquez sur le globe pour charger une région en haute résolution.</p>
+      <p class="hint" id="lod-info"></p>
+    </section>
+
+    <section>
+      <label>Exagération verticale <output id="exag-out">25×</output>
+        <input id="exag" type="range" min="1" max="80" step="1" value="25" />
+      </label>
+      <label>Rendu
+        <select id="color-mode">
+          <option value="0">Couleurs hypsométriques + ombrage</option>
+          <option value="1">Ombrage seul (gris)</option>
+          <option value="2">Couleurs seules</option>
+          <option value="3">Image radar Magellan (USGS) + ombrage</option>
+        </select>
+      </label>
+      <label>Azimut du soleil <output id="sun-az-out">315°</output>
+        <input id="sun-az" type="range" min="0" max="360" step="1" value="315" />
+      </label>
+      <label>Hauteur du soleil <output id="sun-el-out">35°</output>
+        <input id="sun-el" type="range" min="5" max="90" step="1" value="35" />
+      </label>
+    </section>
+
+    <section>
+      <label class="check"><input id="show-names" type="checkbox" checked /> Noms des reliefs (IAU)</label>
+      <label>Aller à…
+        <input id="search" list="names-list" placeholder="Maxwell Montes, Ovda Regio…" autocomplete="off" />
+        <datalist id="names-list"></datalist>
+      </label>
+    </section>
+
+    <section id="region-opts">
+      <label>Zoom de la région
+        <select id="region-zoom"></select>
+      </label>
+      <label>Taille (tuiles de côté)
+        <select id="region-size">
+          <option value="2">2 × 2</option>
+          <option value="4" selected>4 × 4</option>
+          <option value="6">6 × 6</option>
+          <option value="8">8 × 8</option>
+        </select>
+      </label>
+      <p class="hint" id="region-info"></p>
+    </section>
+
+    <section id="readout">
+      <div><span>Lat.</span><b id="ro-lat">—</b></div>
+      <div><span>Lon.</span><b id="ro-lon">—</b></div>
+      <div><span>Alt.</span><b id="ro-alt">—</b></div>
+    </section>
+  </aside>
+
+  <div id="legend">
+    <canvas id="legend-ramp" width="256" height="12"></canvas>
+    <div class="ticks"><span id="legend-min"></span><span>0 m</span><span id="legend-max"></span></div>
+    <small>altitude au-dessus de la sphère de 6051 km</small>
+  </div>
+
+  <button id="btn-close" type="button" title="Fermer la région (Échap)" aria-label="Fermer la région" hidden>×</button>
+
+  <div id="status" hidden></div>
+
+  <footer id="credits">
+    Données : <a href="https://doi.org/10.5281/zenodo.22164484" target="_blank" rel="noopener">Trussell, A. (2026), Venus Opposite-Look Topography</a>
+    (CC BY 4.0) — mosaïques et altimétrie Magellan (USGS / NASA PDS), stéréo Herrick et al. (2012).
+    Produit de recherche, non relu par les pairs.
+    Images radar et noms : <a href="https://astrogeology.usgs.gov/" target="_blank" rel="noopener">USGS Astrogeology</a> /
+    <a href="https://planetarynames.wr.usgs.gov/Page/VENUS/target" target="_blank" rel="noopener">IAU Gazetteer</a>.
+  </footer>
+
+</body>
+</html>

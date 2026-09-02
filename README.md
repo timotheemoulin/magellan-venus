@@ -70,6 +70,11 @@ depuis l'USGS, sans proxy.
 Pour un envoi allégé (~540 Mo, 14 000 fichiers au lieu de ~1,6 Go et 56 000), générer les tuiles
 avec `--zooms 0-7` : on perd seulement le niveau natif à 290 m/px.
 
+`dist/` est versionné : chaque commit qui touche `src/` ou `index.html` embarque le bundle
+correspondant (`npm run build` avant de commiter). Mettre l'application à jour sur le serveur
+revient donc à y copier `dist/index.html` et `dist/assets/` depuis GitHub, sans Node ni npm
+(`pwsh tools/package.ps1 -AppOnly` produit l'archive équivalente).
+
 ## Pourquoi seulement 35 % de la planète ?
 
 Magellan a imagé 98 % de Vénus au radar, mais VOLT tire le relief fin de la **stéréo à visées
